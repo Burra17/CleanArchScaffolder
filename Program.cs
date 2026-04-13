@@ -114,10 +114,11 @@ AnsiConsole.Status()
         Run($"dotnet add {api} package Microsoft.EntityFrameworkCore.Design");
         Run($"dotnet add {api} package Scalar.AspNetCore");
 
-        ctx.Status("[blue]Installerar MediatR & FluentValidation i Application...[/]");
+        ctx.Status("[blue]Installerar MediatR, FluentValidation & AutoMapper i Application...[/]");
         Run($"dotnet add {app} package MediatR");
         Run($"dotnet add {app} package FluentValidation");
         Run($"dotnet add {app} package FluentValidation.DependencyInjectionExtensions");
+        Run($"dotnet add {app} package AutoMapper");
 
         // 7. Städa bort genererade filer
         ctx.Status("[dim]Städar bort genererade filer...[/]");
@@ -151,7 +152,7 @@ AnsiConsole.Status()
         string[][] folders =
         [
             [$"src/{solutionName}.Domain/Entities", $"src/{solutionName}.Domain/ValueObjects", $"src/{solutionName}.Domain/Enums"],
-            [$"src/{solutionName}.Application/Interfaces", $"src/{solutionName}.Application/Features", $"src/{solutionName}.Application/DTOs"],
+            [$"src/{solutionName}.Application/Interfaces", $"src/{solutionName}.Application/Features", $"src/{solutionName}.Application/DTOs", $"src/{solutionName}.Application/Mappings"],
             [$"src/{solutionName}.Infrastructure/Persistence", $"src/{solutionName}.Infrastructure/Repositories"],
             [$"src/{solutionName}.Api/Controllers"],
         ];
@@ -166,36 +167,20 @@ AnsiConsole.Status()
                     File.WriteAllBytes(gitkeep, []);
             }
 
-        // 9. Skapa IAppDbContext i Application
-        ctx.Status("[blue]Skapar interfaces...[/]");
-        File.WriteAllText(
-            Path.Combine("src", $"{solutionName}.Application", "Interfaces", "IAppDbContext.cs"),
-            $$"""
-            namespace {{solutionName}}.Application.Interfaces;
-
-            public interface IAppDbContext
-            {
-                Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
-            }
-            """);
-
-        // 10. Skapa AppDbContext i Infrastructure
+        // 9. Skapa AppDbContext i Infrastructure
         ctx.Status("[green]Skapar AppDbContext...[/]");
         File.WriteAllText(
             Path.Combine("src", $"{solutionName}.Infrastructure", "Persistence", "AppDbContext.cs"),
             $$"""
             using Microsoft.EntityFrameworkCore;
-            using {{solutionName}}.Application.Interfaces;
 
             namespace {{solutionName}}.Infrastructure.Persistence;
 
-            public class AppDbContext(DbContextOptions<AppDbContext> options)
-                : DbContext(options), IAppDbContext
+            public class AppDbContext : DbContext
             {
-                protected override void OnModelCreating(ModelBuilder modelBuilder)
+                public AppDbContext(DbContextOptions<AppDbContext> options)
+                    : base(options)
                 {
-                    modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
-                    base.OnModelCreating(modelBuilder);
                 }
             }
             """);
@@ -219,6 +204,8 @@ AnsiConsole.Status()
 
                     services.AddValidatorsFromAssembly(typeof(DependencyInjection).Assembly);
 
+                    services.AddAutoMapper(typeof(DependencyInjection).Assembly);
+
                     return services;
                 }
             }
@@ -231,7 +218,6 @@ AnsiConsole.Status()
             using Microsoft.EntityFrameworkCore;
             using Microsoft.Extensions.Configuration;
             using Microsoft.Extensions.DependencyInjection;
-            using {{solutionName}}.Application.Interfaces;
             using {{solutionName}}.Infrastructure.Persistence;
 
             namespace {{solutionName}}.Infrastructure;
@@ -242,9 +228,6 @@ AnsiConsole.Status()
                 {
                     services.AddDbContext<AppDbContext>(options =>
                         options.UseSqlServer(configuration.GetConnectionString("DefaultConnection")));
-
-                    services.AddScoped<IAppDbContext>(provider =>
-                        provider.GetRequiredService<AppDbContext>());
 
                     return services;
                 }
@@ -325,9 +308,10 @@ domainNode.AddNode("[dim]Enums/[/]");
 
 // Application
 var appNode = srcNode.AddNode($"[blue bold]{solutionName}.Application[/]");
-appNode.AddNode("[dim]Interfaces/[/] [grey]IAppDbContext.cs[/]");
+appNode.AddNode("[dim]Interfaces/[/]");
 appNode.AddNode("[dim]Features/[/]");
 appNode.AddNode("[dim]DTOs/[/]");
+appNode.AddNode("[dim]Mappings/[/]");
 appNode.AddNode("[grey]DependencyInjection.cs[/]");
 
 // Infrastructure
@@ -388,7 +372,7 @@ pkgTable.AddRow(
     "EF Core Design, Scalar.AspNetCore");
 pkgTable.AddRow(
     $"[blue]{solutionName}.Application[/]",
-    "MediatR, FluentValidation, FluentValidation.DependencyInjectionExtensions");
+    "MediatR, FluentValidation, FluentValidation.DI, AutoMapper");
 pkgTable.AddRow(
     $"[yellow]{solutionName}.Domain[/]",
     "[dim]—[/]");
